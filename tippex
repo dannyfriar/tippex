@@ -1,0 +1,14 @@
+#!/bin/sh
+# Launcher: sets up the virtualenv on first run, then starts Tippex.
+set -e
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+if [ ! -x "$DIR/.venv/bin/python" ]; then
+  echo "First run: setting up Tippex..."
+  python3 -m venv "$DIR/.venv"
+  "$DIR/.venv/bin/pip" install -q -r "$DIR/requirements.txt"
+fi
+if [ -z "$1" ]; then
+  echo "Usage: tippex file.pdf"
+  exit 1
+fi
+exec "$DIR/.venv/bin/python" "$DIR/tippex.py" "$@"
