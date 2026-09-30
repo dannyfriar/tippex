@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pymupdf
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 SRC = None  # the PDF being edited; set in main()
 ORIGINAL = None  # its bytes; edits always apply to this, so saving over SRC is safe
@@ -14,13 +14,15 @@ ZOOM = 1.5
 
 # Correction-fluid brush painting a white stroke.
 LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-<path d="M3 27.5c5-3.5 9-1 15-5" fill="none" stroke="#9aa4b2" stroke-width="5.5" stroke-linecap="round"/>
-<path d="M3 27.5c5-3.5 9-1 15-5" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
-<g transform="translate(18.5 21.5) rotate(45)">
-<rect x="-3.2" y="-21" width="6.4" height="12" rx="2" fill="#e8413a"/>
-<rect x="-3.2" y="-21" width="2" height="12" rx="1" fill="#ff7a70"/>
-<rect x="-2.9" y="-9.5" width="5.8" height="3" fill="#c9ced6"/>
-<path d="M-2.6 -6.5h5.2c0 3.2-1.2 5.6-2.6 6.8c-1.4-1.2-2.6-3.6-2.6-6.8z" fill="#fff" stroke="#9aa4b2" stroke-width=".8"/>
+<path d="M2.5 28c4-3 6-1.2 10-4" fill="none" stroke="#9aa4b2" stroke-width="5.5" stroke-linecap="round"/>
+<path d="M2.5 28c4-3 6-1.2 10-4" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+<g transform="translate(12.8 23.8) rotate(45)">
+<path d="M-.8 -2.6h1.6l-.45 2.6h-.7z" fill="#7d8796"/>
+<path d="M-2.5 -7.6h5L1.1 -2.4h-2.2z" fill="#e6e9ee" stroke="#9aa4b2" stroke-width=".6" stroke-linejoin="round"/>
+<rect x="-2.5" y="-23" width="5" height="15.6" rx=".8" fill="#1f3b73"/>
+<path d="M-2.5 -9.8h5M-2.5 -11.6h5" stroke="#4a6bb0" stroke-width=".8"/>
+<rect x="-2.5" y="-25.4" width="5" height="3" rx="1.4" fill="#e6e9ee"/>
+<rect x="1.7" y="-22.4" width="1.5" height="8.5" rx=".75" fill="#c9ced6"/>
 </g></svg>"""
 FAVICON = "data:image/svg+xml," + urllib.parse.quote(LOGO)
 
@@ -46,30 +48,60 @@ def build_page():
                 f'style="left:{x0}px;top:{y0}px;width:{x1 - x0 + 40}px;height:{y1 - y0}px;font-size:{span["size"] * ZOOM * 0.9}px">'
             )
         html.append(f'<div class="page"><img src="data:image/png;base64,{png}">{"".join(boxes)}</div>')
-    return TEMPLATE.replace("{{LOGO}}", LOGO).replace("{{FAVICON}}", FAVICON).replace("{{NAME}}", escape(SRC.name)).replace("{{PAGES}}", "".join(html))
+    return TEMPLATE.replace("{{LOGO}}", LOGO).replace("{{FAVICON}}", FAVICON).replace("{{VERSION}}", __version__).replace("{{NAME}}", escape(SRC.name)).replace("{{PATH}}", escape(str(SRC))).replace("{{PAGES}}", "".join(html))
 
 
 def escape(s):
     return s.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
 
 
+# A long-lived helper that shows the native Save panel. Starting AppKit takes ~2s,
+# so we pay that once at launch instead of on every Save click.
+SAVE_PANEL_JXA = """
+ObjC.import('AppKit');
+const app = $.NSApplication.sharedApplication;
+app.setActivationPolicy($.NSApplicationActivationPolicyAccessory);
+$.NSSavePanel.savePanel;
+const stdin = $.NSFileHandle.fileHandleWithStandardInput;
+const stdout = $.NSFileHandle.fileHandleWithStandardOutput;
+while (true) {
+  const data = stdin.availableData;
+  if (data.length == 0) break;
+  const req = JSON.parse($.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding).js);
+  const panel = $.NSSavePanel.savePanel;
+  panel.setMessage($('Save edited PDF as:'));
+  panel.setAllowedFileTypes($(['pdf']));
+  panel.setDirectoryURL($.NSURL.fileURLWithPath($(req.dir)));
+  panel.setNameFieldStringValue($(req.name));
+  app.activateIgnoringOtherApps(true);
+  const path = panel.runModal == $.NSModalResponseOK ? panel.URL.path.js : '';
+  app.hide(null);
+  stdout.writeData($(JSON.stringify({path}) + '\\n').dataUsingEncoding($.NSUTF8StringEncoding));
+}
+"""
+_save_panel = None
+
+
+def start_save_panel():
+    global _save_panel
+    _save_panel = subprocess.Popen(
+        ["osascript", "-l", "JavaScript", "-e", SAVE_PANEL_JXA],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+    )
+
+
 def ask_save_path():
     """Show the native macOS Save dialog. Returns a Path, or None if cancelled."""
+    if _save_panel is None or _save_panel.poll() is not None:
+        start_save_panel()
     default = OUT or SRC.with_name(SRC.stem + "-tippexed.pdf")
-    q = lambda v: json.dumps(str(v), ensure_ascii=False)
-    script = [
-        "activate",
-        f'set f to choose file name with prompt "Save edited PDF as:" default name {q(default.name)} '
-        f"default location (POSIX file {q(default.parent)})",
-        "POSIX path of f",
-    ]
-    r = subprocess.run(["osascript", *(a for line in script for a in ("-e", line))], capture_output=True, text=True)
-    if r.returncode:
-        if "-128" in r.stderr:  # user pressed Cancel
-            return None
-        raise RuntimeError(r.stderr.strip())
-    path = Path(r.stdout.strip())
-    return path if path.suffix.lower() == ".pdf" else path.with_name(path.name + ".pdf")
+    _save_panel.stdin.write(json.dumps({"dir": str(default.parent), "name": default.name}) + "\n")
+    _save_panel.stdin.flush()
+    reply = _save_panel.stdout.readline()
+    if not reply:
+        raise RuntimeError("the Save dialog closed unexpectedly")
+    path = json.loads(reply)["path"]
+    return Path(path) if path else None
 
 
 def save(edits, path):
@@ -124,28 +156,30 @@ class Handler(BaseHTTPRequestHandler):
 
 TEMPLATE = """<!doctype html><meta charset="utf-8"><title>Tippex – {{NAME}}</title><link rel="icon" href="{{FAVICON}}">
 <style>
-body{margin:0;background:#888;font-family:-apple-system,sans-serif}
+body{margin:0;background:#f4f5f7;font-family:-apple-system,sans-serif}
 header{position:sticky;top:0;z-index:9;background:#222;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 header .grow{flex:1}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px;letter-spacing:.3px}
 .brand svg{width:30px;height:30px}
+.version{font-weight:400;font-size:11px;color:#aaa;margin-left:-3px;align-self:flex-end;padding-bottom:3px}
 .dim{color:#aaa}
+.path{font-size:13px;word-break:break-all}
 button{font-size:15px;padding:6px 16px}
 #dest{position:sticky;top:52px;z-index:8;background:#fffbe6;color:#333;padding:8px 16px;font-size:13px;border-bottom:1px solid #e5d98a;word-break:break-all}
 #dest a{margin-left:8px;color:#06c}
-.page{position:relative;width:max-content;margin:20px auto;box-shadow:0 2px 10px #0006}
+.page{position:relative;width:max-content;margin:20px auto;box-shadow:0 1px 3px #0002,0 6px 24px #0000001a}
 .page img{display:block}
 .page input{position:absolute;box-sizing:border-box;border:1px solid transparent;background:transparent;color:transparent;padding:0;font-family:Helvetica,Arial,sans-serif;outline:none}
 .page input:hover{border-color:#39f8}
 .page input:focus,.page input.changed{background:#fff;color:#000;border-color:#39f}
 </style>
 <header>
-  <span class="brand">{{LOGO}}Tippex</span><span class="dim">{{NAME}}</span>
+  <span class="brand">{{LOGO}}Tippex<span class="version">v{{VERSION}}</span></span><span class="dim path" title="Editing {{PATH}}">{{PATH}}</span>
   <span class="grow"></span>
   <span id="status" class="dim"></span>
   <button id="save">Save…</button><button id="saveas" hidden>Save As…</button>
 </header>
-<div id="dest">Not saved yet. You'll choose where to save the first time you press Save.</div>
+<div id="dest" hidden></div>
 {{PAGES}}
 <script>
 let savedPath = null, dirty = false;
@@ -167,6 +201,7 @@ async function save(saveAs) {
   $('dest').innerHTML = 'Saving to <b></b> <a href="#">Show in Finder</a>';
   $('dest').querySelector('b').textContent = savedPath;
   $('dest').querySelector('a').onclick = e => { e.preventDefault(); fetch('/reveal', {method: 'POST', body: '{}'}); };
+  $('dest').hidden = false;
   $('save').textContent = 'Save';
   $('saveas').hidden = false;
   setDirty(false);
@@ -181,12 +216,18 @@ addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 
 def main():
     global SRC, ORIGINAL
-    if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
-        sys.exit("Usage: tippex file.pdf")
+    usage = "Usage: tippex file.pdf\n       tippex --version"
+    if sys.argv[1:] in (["-V"], ["--version"]):
+        return print(f"tippex {__version__}")
+    if sys.argv[1:] in (["-h"], ["--help"]):
+        return print(usage)
+    if len(sys.argv) != 2:
+        sys.exit(usage)
     SRC = Path(sys.argv[1]).expanduser().resolve()
     if not SRC.is_file():
         sys.exit(f"No such file: {SRC}")
     ORIGINAL = SRC.read_bytes()
+    start_save_panel()
     server = HTTPServer(("127.0.0.1", 0), Handler)
     url = f"http://127.0.0.1:{server.server_port}/"
     print(f"Editing {SRC.name} at {url}\nPress Ctrl+C to quit.")

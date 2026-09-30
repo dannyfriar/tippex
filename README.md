@@ -20,11 +20,12 @@ curl -fsSL https://raw.githubusercontent.com/dannyfriar/tippex/main/install.sh |
 
 ```
 tippex path/to/file.pdf
+tippex --version
 ```
 
 A browser tab opens showing the PDF. Click any line of text and type over it.
 
-The first time you press **Save…** (or ⌘S), the macOS Save dialog asks where to put the file, suggesting `file-tippexed.pdf` next to the original. After that, **Save** (⌘S) writes to the same file, and **Save As…** (⇧⌘S) picks a new one. The banner under the toolbar always shows where the file is saved, with a link to show it in Finder. Press Ctrl+C in Terminal to quit.
+The first time you press **Save…** (or ⌘S), the macOS Save dialog asks where to put the file, suggesting `file-tippexed.pdf` next to the original. After that, **Save** (⌘S) writes to the same file, and **Save As…** (⇧⌘S) picks a new one. Once saved, a banner under the toolbar shows where the file is, with a link to show it in Finder. Press Ctrl+C in Terminal to quit.
 
 The first run creates a local `.venv` and installs [PyMuPDF](https://pymupdf.readthedocs.io/).
 
