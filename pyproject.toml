@@ -1,0 +1,33 @@
+[project]
+name = "tippex"
+dynamic = ["version"]
+description = "The simplest possible PDF text editor, for macOS"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "dannyfriar", email = "dfriar93@gmail.com" }]
+dependencies = ["pymupdf>=1.24"]
+classifiers = [
+    "Operating System :: MacOS",
+    "Environment :: MacOS X",
+    "Topic :: Office/Business",
+]
+
+[project.urls]
+Homepage = "https://github.com/dannyfriar/tippex"
+
+[project.scripts]
+tippex = "tippex:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "tippex.py"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["tippex.py"]
+
+[tool.hatch.build.targets.sdist]
+include = ["tippex.py", "README.md", "LICENSE"]

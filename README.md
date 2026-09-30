@@ -5,13 +5,15 @@ The simplest possible PDF text editor, for macOS.
 ## Install
 
 ```
+uv tool install tippex
+```
+
+or `pipx install tippex`, or `uv pip install tippex` into an environment of your choice.
+
+Without uv or pipx:
+
+```
 curl -fsSL https://raw.githubusercontent.com/dannyfriar/tippex/main/install.sh | sh
-```
-
-While the repo is private, clone over SSH and run the installer from the clone:
-
-```
-git clone git@github.com:dannyfriar/tippex.git ~/.tippex && ~/.tippex/install.sh
 ```
 
 ## Use
@@ -20,7 +22,9 @@ git clone git@github.com:dannyfriar/tippex.git ~/.tippex && ~/.tippex/install.sh
 tippex path/to/file.pdf
 ```
 
-A browser tab opens showing the PDF. Click any line of text, type over it, and press **Save**. The result is written next to the original as `file-tippexed.pdf`; the original is never modified. Press Ctrl+C in Terminal to quit.
+A browser tab opens showing the PDF. Click any line of text and type over it.
+
+The first time you press **Save…** (or ⌘S), the macOS Save dialog asks where to put the file, suggesting `file-tippexed.pdf` next to the original. After that, **Save** (⌘S) writes to the same file, and **Save As…** (⇧⌘S) picks a new one. The banner under the toolbar always shows where the file is saved, with a link to show it in Finder. Press Ctrl+C in Terminal to quit.
 
 The first run creates a local `.venv` and installs [PyMuPDF](https://pymupdf.readthedocs.io/).
 
